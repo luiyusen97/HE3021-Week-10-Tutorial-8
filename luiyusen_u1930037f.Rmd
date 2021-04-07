@@ -1,0 +1,90 @@
+---
+title: "HE3021 Tutorial 8 Attempt"
+author: "Lui Yu Sen U1930037F"
+date: "3/30/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE}
+warningsoff <- getOption("warn") 
+options(warn = -1)
+library(haven) # read dta files
+library(tidyverse) # manipulate dataframes
+library(ivreg) # 2 stage linear regression and its associated statistical tests
+library(aod) # for chi2 and F tests
+
+filpaths <- list.files(path = paste0(getwd(),"//rawdata//"), 
+                       full.names = TRUE)
+wage2 <- read_dta(file = filpaths[1])
+options(warn = warningsoff)
+```
+
+## 1
+
+# a 
+
+$$
+H_0: \pi_{sibs}=\pi_{brthord}=\pi_{meduc}=0, H_1:otherwise, \alpha=0.05, LM-test
+$$
+```{r, echo=TRUE}
+instr_exo_test_model <- lm(
+    formula = educ ~ sibs + brthord + meduc + married + exper + tenure, data = wage2)
+instr_exo_test <- wald.test(
+    Sigma = vcov(instr_exo_test_model), b = coefficients(instr_exo_test_model), Terms = c(2,3,4))
+# p-value below printed value
+# instrumental relevance true
+```
+p-value == `r instr_exo_test$result$chi2[3]` < 0.05, thus we have sufficient evidence to reject $H_0$.
+
+# b
+
+```{r, echo=TRUE}
+twostage_model <- ivreg(
+    formula = lwage ~ married + exper + tenure + educ | married + exper + tenure 
+    + sibs + brthord + meduc, data = wage2)
+twostage_model_summary <-(summary(twostage_model, diagnostics = TRUE))
+summary(twostage_model, diagnostics = FALSE)
+```
+
+# c
+
+Regressing the residuals on each instrumental variable, we have:
+$$
+\hat{u}_{IV}=\gamma_0+\gamma_1married+\gamma_2exper+\gamma_3tenure+\gamma_4sibs+\gamma_5brthord+\gamma_6meduc
+$$
+We test: $H_0:\gamma_4=\gamma_5=\gamma_6=0,H_1:otherwise,\alpha=0.05,F-test$. The J-statistic is: `r twostage_model_summary$diagnostics[3,3]`. From the $\chi^2$-table, we have the critical value as 5.991 > `r twostage_model_summary$diagnostics[3,3]`. The p-value is `r twostage_model_summary$diagnostics[3,4]` > 0.05, so we have insufficient evidence to reject the null hypothesis. We assume that at least 1 of the instrument variables is exogenous, then not rejecting $H_0$ means that all instrumental variables are exogenous.
+
+# d
+
+From the Sargan test, it is likely that the 2SLS model's instrumental variables fulfill instrumental exogeneity. Then, we test $H_0:\beta_{educ,2SLS} \ and \ \beta_{educ,OLS} \ are \ consistent,Var(\beta_{educ,2SLS})>Var(\beta_{educ,OLS}), H_1:only \ \beta_{educ,2SLS} \ is \ consistent,\alpha=0.05,\chi^2-test$. If the coefficients estimated in OLS are significantly different from those in 2-stage regression, then it is likely that the OLS coefficient is inconsistent and that $Cov(x,u)\neq0$. The $\chi^2-statistic$ is `r twostage_model_summary$diagnostics[2,3]` > 5.991 and the p-value is `r twostage_model_summary$diagnostics[2,4]` < 0.05. Thus we have sufficient evidence to reject $H_0$. It is likely that $Cov(x,u)\neq0$.
+
+# 2
+
+## a
+
+\begin{align}
+&\hat{\beta}_1=\frac{\hat{cov}(x,y)}{\hat{Var}(x)} \\ 
+& \ \ \ =\frac{\hat{Cov}(x,\beta_0+\beta_1x+u)}{\hat{Var}(x)} \\ 
+& \ \ \ =\beta_1\frac{\hat{Var}(x)}{\hat{Var}(x)}+\frac{\hat{Cov}(x,u)}{\hat{Var}(x)} \\ 
+& \ \ \ =\beta_1+\frac{\hat{Cov}(x,u)}{\sqrt{\hat{Var}(x)\cdot\hat{Var}(u)}}\cdot\frac{\sqrt{\hat{Var}(u)}}{\sqrt{\hat{Var}(x)}} \\ 
+&\lim_{n\to\infty}\left[\beta_1+\frac{\hat{Cov}(x,u)}{\sqrt{\hat{Var}(x)\cdot\hat{Var}(u)}}\cdot\frac{\sqrt{\hat{Var}(u)}}{\sqrt{\hat{Var}(x)}}\right]=\beta_1+Corr(x,u)\cdot\frac{\sigma_u}{\sigma_x}
+\end{align}
+
+## b
+
+\begin{align}
+&\hat{\beta}_{1,IV}=\frac{\hat{Cov}(z,y)}{\hat{Cov}(z,x)} \\ 
+&\ \ \ \ \ \ \ =\frac{\hat{Cov}(z,\beta_0,\beta_1x+u)}{\hat{Cov}(z,x)} \\ 
+&\ \ \ \ \ \ \ =\beta_1\frac{\hat{Cov}(z,x)}{\hat{Cov}(z,x)}+\frac{\hat{Cov}(z,u)}{\hat{Cov}(z,x)} \\ 
+&\ \ \ \ \ \ \ =\beta_1+\frac{\hat{Cov}(z,u)}{\hat{Cov}(z,x)}\cdot\frac{\sqrt{\hat{Var}(z)}\sqrt{\hat{Var}(x)}}{\sqrt{\hat{Var}(z)}\sqrt{\hat{Var}(u)}}\cdot\frac{\sqrt{\hat{Var}(z)}\sqrt{\hat{Var}(u)}}{\sqrt{\hat{Var}(z)}\sqrt{\hat{Var}(x)}} \\ 
+&\lim_{n\to\infty}\left[\beta_1+\frac{\hat{Cov}(z,u)}{\hat{Cov}(z,x)}\cdot\frac{\sqrt{\hat{Var}(z)}\sqrt{\hat{Var}(x)}}{\sqrt{\hat{Var}(z)}\sqrt{\hat{Var}(u)}}\cdot\frac{\sqrt{\hat{Var}(z)}\sqrt{\hat{Var}(u)}}{\sqrt{\hat{Var}(z)}\sqrt{\hat{Var}(x)}}\right]=\beta_1+\frac{Corr(z,u)}{Corr(z,x)}\cdot\frac{\sigma_u}{\sigma_x}
+\end{align}
+
+## c
+
+$Cov(z,u)\neq0, \ Cov(z,x) \ small$, so $\frac{Corr(z,u)}{Corr(z,x)}\cdot\frac{\sigma_u}{\sigma_x}\neq0$, so $$\lim_{n\to\infty}\left[\beta_1+\frac{\hat{Cov}(x,u)}{\sqrt{\hat{Var}(x)\cdot\hat{Var}(u)}}\cdot\frac{\sqrt{\hat{Var}(u)}}{\sqrt{\hat{Var}(u)}}\right]=\beta_1+Corr(x,u)\cdot\frac{\sigma_u}{\sigma_x}\neq\beta_1$$ and the estimator is inconsistent.  
+Neither estimator would work, since $Cov(x,u)\neq0, \ Cov(z,u)\neq0$; they are both endogenous.
